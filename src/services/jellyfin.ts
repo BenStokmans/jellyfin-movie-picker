@@ -125,7 +125,6 @@ class JellyfinService {
           includeItemTypes: 'Movie',
           recursive: true,
           fields: 'Overview,Genres,ProductionYear,RunTimeTicks',
-          limit: 100
         }
       });
 

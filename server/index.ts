@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import axios, { Axios, AxiosError } from "axios";
+import axios, { AxiosError } from "axios";
 
 // Types (duplicated from client for simplicity)
 interface User {
