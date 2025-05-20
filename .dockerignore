@@ -1,0 +1,32 @@
+# Dependencies
+node_modules
+server/node_modules
+
+# Build files
+dist
+server/dist
+
+# Development files
+.vscode
+.github
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Cache
+.npm
+.eslintcache
+
+# Misc
+.DS_Store
+*.swp
+*.swo

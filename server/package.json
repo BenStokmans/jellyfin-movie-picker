@@ -1,0 +1,29 @@
+{
+  "name": "jellyfin-movie-picker-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Self-hosted server for Jellyfin Movie Picker",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "NODE_ENV=development tsx watch index.ts",
+    "build": "tsc",
+    "prod": "NODE_ENV=production node dist/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.9.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "uuid": "^9.0.1",
+    "vite": "^6.0.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.18",
+    "@types/express": "^4.17.22",
+    "@types/node": "^20.17.48",
+    "@types/uuid": "^9.0.8",
+    "tsx": "^4.7.0",
+    "typescript": "^5.8.3"
+  }
+}
