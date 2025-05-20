@@ -1,6 +1,5 @@
 // Jellyfin API service
-import { Jellyfin } from '@jellyfin/sdk';
-import { Api } from '@jellyfin/sdk/lib/api';
+// Removed direct SDK dependencies; using proxy via axios
 import axios from 'axios';
 import { Movie } from '@/types';
 
@@ -19,7 +18,6 @@ interface JellyfinItem {
 }
 
 class JellyfinService {
-  private api: Api | null = null;
   private jellyfinServerUrl: string = '';
   private clientName: string = 'Jellyfin Movie Picker';
   private clientVersion: string = '1.0.0';
@@ -39,12 +37,16 @@ class JellyfinService {
   }
 
   private getImageUrl(itemId: string, imageType: string, tag: string): string {
-    if (!this.api) {
+    if (!this.jellyfinServerUrl) {
       return '';
     }
-    
-    // Use proxy for image URLs to avoid CORS issues
-    return `/api/jellyfin-proxy/Items/${itemId}/Images/${imageType}?tag=${tag}`;
+    // Use proxy for image URLs, include server URL in query to avoid missing CORS header
+    const proxyPath = `/api/jellyfin-proxy/Items/${itemId}/Images/${imageType}`;
+    const params = new URLSearchParams({
+      tag,
+      jellyfinUrl: this.jellyfinServerUrl
+    });
+    return `${proxyPath}?${params.toString()}`;
   }
 
   async connect(serverUrl: string): Promise<void> {
@@ -52,22 +54,7 @@ class JellyfinService {
       // Store the server URL for later use
       this.jellyfinServerUrl = serverUrl;
       
-      // Create Jellyfin SDK instance
-      const jellyfin = new Jellyfin({
-        clientInfo: {
-          name: this.clientName,
-          version: this.clientVersion
-        },
-        deviceInfo: {
-          name: this.deviceName,
-          id: this.deviceId
-        }
-      });
-
-      // Create API with the actual Jellyfin server URL
-      this.api = jellyfin.createApi(serverUrl);
-      
-      // Test connection by fetching system info via our proxy
+      // Test connection by fetching system info via proxy
       const response = await axios.get('/api/jellyfin-proxy/System/Info/Public', {
         headers: {
           'X-Jellyfin-Url': serverUrl,

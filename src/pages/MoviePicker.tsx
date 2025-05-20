@@ -15,18 +15,56 @@ import { type MovieSession } from '@/types';
 
 export default function MoviePicker() {
   const navigate = useNavigate();
-  const { user, currentLobby, movies, movieSession, setMovieSession, currentMovieIndex, setCurrentMovieIndex } = useAppStore();
+  const { user, currentLobby, setCurrentLobby, movies, movieSession, setMovieSession, setMovies, currentMovieIndex, setCurrentMovieIndex } = useAppStore();
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [userVote, setUserVote] = useState<'yes' | 'no' | null>(null);
+  
+  // Touch swipe functionality
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
-  // Redirect if no lobby or movies
+    // Minimum required distance between touch start and touch end to be detected as swipe
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd || loading) return;
+    const distance = touchStart - touchEnd;
+    const isSwipe = Math.abs(distance) > minSwipeDistance;
+    if (isSwipe) {
+      if (distance > 0) {
+        handleVote('no');
+      } else {
+        handleVote('yes');
+      }
+    }
+  };
+
+  // Add debug logging for initial state
   useEffect(() => {
-    if (!currentLobby || movies.length === 0) {
+    console.log("MoviePicker initial state:", { 
+      hasMovies: movies.length > 0,
+      currentMovieIndex,
+      movieSessionExists: !!movieSession
+    });
+  }, [movies.length, currentMovieIndex, movieSession]);
+
+  // Redirect if no lobby or session not started
+  useEffect(() => {
+    if (!currentLobby || currentLobby.status !== 'picking') {
       navigate('/lobby');
     }
-  }, [currentLobby, movies, navigate]);
+  }, [currentLobby, navigate]);
 
   // Set up session update listener
   useEffect(() => {
@@ -35,16 +73,42 @@ export default function MoviePicker() {
     const unsubscribe = socketService.onSessionChange((updatedSession: MovieSession) => {
       setMovieSession(updatedSession);
       
-      // If we have a match, navigate to result page
+      // Only update movies when first receiving them (empty array) or when joining a session in progress
+      if (movies.length === 0) {
+        setMovies(updatedSession.movies);
+        // Start at index 0 when first receiving movies
+        setCurrentMovieIndex(0);
+      }
+      
+      // Check if this update includes a match notification
       if (updatedSession.matchedMovieId) {
         navigate('/result');
       }
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, [currentLobby, setMovieSession, navigate]);
+    return () => unsubscribe();
+  }, [currentLobby, navigate, setMovieSession, setMovies, setCurrentMovieIndex, movies.length]);
+
+  // Sync lobby updates in MoviePicker
+  useEffect(() => {
+    if (!currentLobby) return;
+    const unsubscribeLobby = socketService.onLobbyChange((updatedLobby) => {
+      setCurrentLobby(updatedLobby);
+    });
+    return () => unsubscribeLobby();
+  }, [currentLobby, setCurrentLobby]);
+
+  // Preload next 5 movie poster images for smoother UX
+  useEffect(() => {
+    const preloadCount = 5;
+    const nextMovies = movies.slice(currentMovieIndex + 1, currentMovieIndex + 1 + preloadCount);
+    nextMovies.forEach((movie) => {
+      if (movie.posterUrl) {
+        const img = new Image();
+        img.src = movie.posterUrl;
+      }
+    });
+  }, [currentMovieIndex, movies]);
 
   const handleVote = async (vote: 'yes' | 'no') => {
     if (!user || !currentLobby || !movieSession || currentMovieIndex >= movies.length) return;
@@ -79,7 +143,7 @@ export default function MoviePicker() {
   if (currentMovieIndex >= movies.length) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-lg">
           <CardContent className="flex flex-col items-center pt-6">
             <h2 className="text-2xl font-semibold mb-4">You've seen all movies!</h2>
             <p className="text-center mb-6">
@@ -105,7 +169,7 @@ export default function MoviePicker() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background">
-      <div className="w-full max-w-md flex flex-col items-center">
+      <div className="w-full max-w-3xl mx-auto flex flex-col items-center text-center">
         <h1 className="text-2xl font-bold mb-6">Pick a Movie</h1>
         
         <div 
@@ -113,11 +177,19 @@ export default function MoviePicker() {
             userVote === 'yes' ? 'translate-x-[120%]' : 
             userVote === 'no' ? 'translate-x-[-120%]' : 'translate-x-0'
           }`}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
-          <Carousel className="w-full">
+          <Carousel className="w-full max-w-none sm:max-w-md md:max-w-xl lg:max-w-2xl mx-auto">
             <CarouselContent>
               <CarouselItem>
                 <MovieCard movie={currentMovie} />
+                <div className="text-center mt-2 text-sm text-muted-foreground">
+                  <span>← Swipe left to skip</span>
+                  <span className="mx-2">|</span>
+                  <span>Swipe right to like →</span>
+                </div>
               </CarouselItem>
             </CarouselContent>
           </Carousel>

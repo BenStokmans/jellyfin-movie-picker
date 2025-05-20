@@ -1,5 +1,5 @@
 // Login page for the application
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jellyfinService } from '@/services/jellyfin';
 import { useAppStore } from '@/services/store';
@@ -11,7 +11,17 @@ import { Label } from '@/components/ui/label';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { setUser, serverUrl, setServerUrl } = useAppStore();
+  const { user, setUser, serverUrl, setServerUrl } = useAppStore();
+
+  // If already logged in from persisted credentials, go straight to lobby
+  useEffect(() => {
+    if (user && user.jellyfinAccessToken) {
+      // Initialize socket with stored user
+      socketService.setUserId(user.id);
+      socketService.connect();
+      navigate('/lobby');
+    }
+  }, [user, navigate]);
   
   const [serverAddress, setServerAddress] = useState(serverUrl || '');
   const [username, setUsername] = useState('');
@@ -49,6 +59,8 @@ export default function Login() {
       
       // Set user ID in socket service
       socketService.setUserId(appUserId);
+      // Connect to socket server
+      socketService.connect();
       
       // Navigate to lobby page
       navigate('/lobby');
@@ -105,6 +117,14 @@ export default function Login() {
               {loading ? 'Logging in...' : 'Login'}
             </Button>
           </form>
+          {/* Join with code button */}
+          <Button
+            variant="outline"
+            className="w-full mt-2"
+            onClick={() => navigate('/lobby')}
+          >
+            Join with Code
+          </Button>
         </CardContent>
         <CardFooter className="text-xs text-center justify-center">
           Pick movies together with friends from your Jellyfin library

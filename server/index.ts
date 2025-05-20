@@ -49,6 +49,7 @@ interface MovieSession {
 const lobbies: Record<string, Lobby> = {};
 const inviteCodes: Record<string, string> = {}; // inviteCode -> lobbyId
 const sessions: Record<string, MovieSession> = {};
+const userRooms: Record<string, string> = {}; // userId -> lobbyId
 
 // Create Express app
 const app = express();
@@ -88,35 +89,38 @@ app.get("/api/version", (req, res) => {
 // Jellyfin API proxy to bypass CORS restrictions
 app.use("/api/jellyfin-proxy", async (req, res) => {
   try {
-    // Extract Jellyfin server URL from request
-    const jellyfinUrl = req.headers["x-jellyfin-url"] as string;
-
+    // Extract Jellyfin server URL from header or query
+    let jellyfinUrl = req.headers["x-jellyfin-url"] as string;
+    if (!jellyfinUrl && req.query.jellyfinUrl) {
+      jellyfinUrl = req.query.jellyfinUrl as string;
+    }
     if (!jellyfinUrl) {
       return res.status(400).json({ error: "Missing Jellyfin server URL" });
     }
 
-    // Forward the request to the Jellyfin server
-    const targetUrl = `${jellyfinUrl}${req.url.replace(
-      "/api/jellyfin-proxy",
-      ""
-    )}`;
+    // Build target URL, stripping out jellyfinUrl query param
+    const [path, query] = req.url.split('?');
+    const params = new URLSearchParams(query || '');
+    params.delete('jellyfinUrl');
+    const finalPath = path + (params.toString() ? '?' + params.toString() : '');
+    const targetUrl = `${jellyfinUrl}${finalPath}`;
 
-    // Copy original headers but remove host-specific ones
+    // Copy original headers but remove proxy-specific ones
     const headers = { ...req.headers };
     delete headers.host;
-    delete headers["x-jellyfin-url"];
+    delete headers['x-jellyfin-url'];
 
     const response = await axios({
       method: req.method,
       url: targetUrl,
       headers,
-      data: req.method !== "GET" ? req.body : undefined,
-      responseType: "arraybuffer",
+      data: req.method !== 'GET' ? req.body : undefined,
+      responseType: 'arraybuffer',
     });
 
     // Forward the response back to the client
     Object.entries(response.headers).forEach(([key, value]) => {
-      res.setHeader(key, value);
+      res.setHeader(key, value as string);
     });
 
     res.status(response.status).send(response.data);
@@ -239,58 +243,78 @@ io.on("connection", (socket) => {
   socket.on("join-lobby-code", ({ user, inviteCode }, callback) => {
     try {
       const lobbyId = inviteCodes[inviteCode];
-
-      if (!lobbyId) {
+      
+      if (!lobbyId || !lobbies[lobbyId]) {
         return callback({ success: false, error: "Invalid invite code" });
       }
 
-      const lobby = lobbies[lobbyId];
+      // Add to socket.io room
+      socket.join(lobbyId);
 
-      if (!lobby) {
-        return callback({ success: false, error: "Lobby not found" });
+      // Store userId for authentication
+      if (user.id) {
+        userRooms[user.id] = lobbyId;
       }
 
-      // Add user to lobby if not already present
-      const userExists = lobby.participants.some((p) => p.id === user.id);
+      // Add to participants if not already there
+      const lobby = lobbies[lobbyId];
+      const exists = lobby.participants.some((p) => p.id === user.id);
 
-      if (!userExists) {
+      if (!exists) {
         lobby.participants.push(user);
       }
-
-      // Join socket room for this lobby
-      socket.join(lobbyId);
+      
+      // Get existing session if it exists
+      const session = sessions[lobbyId];
 
       // Notify all clients in the lobby
       io.to(lobbyId).emit("lobby-update", lobby);
+      
+      // Send active session to the newly joined user if one exists
+      if (session && lobby.status === 'picking') {
+        socket.emit("session-update", session);
+      }
 
       callback({ success: true, lobby });
     } catch (error) {
-      console.error("Error joining lobby with code:", error);
+      console.error("Error joining lobby:", error);
       callback({ success: false, error: "Failed to join lobby" });
     }
   });
 
-  // Join a lobby with ID
+  // Join lobby 
   socket.on("join-lobby", ({ user, lobbyId }, callback) => {
     try {
-      const lobby = lobbies[lobbyId];
-
-      if (!lobby) {
+      if (!lobbyId || !lobbies[lobbyId]) {
         return callback({ success: false, error: "Lobby not found" });
       }
 
-      // Add user to lobby if not already present
-      const userExists = lobby.participants.some((p) => p.id === user.id);
+      // Add to socket.io room
+      socket.join(lobbyId);
 
-      if (!userExists) {
-        lobby.participants.push(user);
+      // Store userId for authentication
+      if (user.id) {
+        userRooms[user.id] = lobbyId;
       }
 
-      // Join socket room for this lobby
-      socket.join(lobbyId);
+      // Add to participants if not already there
+      const lobby = lobbies[lobbyId];
+      const exists = lobby.participants.some((p) => p.id === user.id);
+
+      if (!exists) {
+        lobby.participants.push(user);
+      }
+      
+      // Get existing session if it exists
+      const session = sessions[lobbyId];
 
       // Notify all clients in the lobby
       io.to(lobbyId).emit("lobby-update", lobby);
+      
+      // Send active session to the newly joined user if one exists
+      if (session && lobby.status === 'picking') {
+        socket.emit("session-update", session);
+      }
 
       callback({ success: true, lobby });
     } catch (error) {
@@ -368,8 +392,12 @@ io.on("connection", (socket) => {
           lobby.selectedMovieId = movieId;
           session.matchedMovieId = movieId;
 
-          // Notify all clients in the lobby
+          // Notify all clients in the lobby about both lobby and session update
           io.to(lobbyId).emit("lobby-update", lobby);
+          io.to(lobbyId).emit("session-update", session);
+          
+          callback({ success: true });
+          return;
         }
       }
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { socketService } from '@/services/socket';
 import { useAppStore } from '@/services/store';
 
@@ -11,7 +11,8 @@ import Result from '@/pages/Result';
 import NotFound from '@/pages/NotFound';
 
 export default function App() {
-  const { isAuthenticated } = useAppStore();
+  const { isAuthenticated, currentLobby } = useAppStore();
+  const navigate = useNavigate();
 
   // Initialize socket connection
   useEffect(() => {
@@ -23,28 +24,29 @@ export default function App() {
     };
   }, []);
 
+  // Redirect based on lobby status
+  useEffect(() => {
+    if (currentLobby?.status === 'picking') {
+      navigate('/picker');
+    } else if (currentLobby?.status === 'completed') {
+      navigate('/result');
+    }
+  }, [currentLobby, navigate]);
+
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={isAuthenticated ? <Navigate to="/lobby" /> : <Login />} />
-        <Route 
-          path="/lobby" 
-          element={isAuthenticated ? <Lobby /> : <Navigate to="/" />} 
-        />
-        <Route 
-          path="/lobby/:inviteCode" 
-          element={isAuthenticated ? <Lobby /> : <Navigate to="/" />} 
-        />
-        <Route 
-          path="/picker" 
-          element={isAuthenticated ? <MoviePicker /> : <Navigate to="/" />} 
-        />
-        <Route 
-          path="/result" 
-          element={isAuthenticated ? <Result /> : <Navigate to="/" />} 
-        />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
+      <div className="flex items-center justify-center min-h-screen">
+        <Routes>
+          <Route path="/" element={isAuthenticated ? <Navigate to="/lobby" /> : <Login />} />
+          {/* Remove auth guard from lobby routes so guests can join via invite link */}
+          <Route path="/lobby" element={<Lobby />} />
+          <Route path="/lobby/:inviteCode" element={<Lobby />} />
+          <Route 
+            path="/picker" 
+            element={isAuthenticated ? <MoviePicker /> : <Navigate to="/" />} 
+          />
+          <Route path="/result" element={<Result />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </div>
   );
 }

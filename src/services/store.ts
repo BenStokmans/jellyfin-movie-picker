@@ -33,47 +33,54 @@ interface AppState {
   resetState: () => void;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  // Auth state
-  user: null,
-  isAuthenticated: false,
-  setUser: (user) => set({ 
-    user, 
-    isAuthenticated: !!user 
-  }),
-  
-  // Jellyfin server settings
-  serverUrl: localStorage.getItem('jellyfinServerUrl') || '',
-  setServerUrl: (url) => {
-    localStorage.setItem('jellyfinServerUrl', url);
-    set({ serverUrl: url });
-  },
-  
-  // Lobby state
-  currentLobby: null,
-  setCurrentLobby: (lobby) => set({ currentLobby: lobby }),
-  
-  // Movie session state
-  movieSession: null,
-  setMovieSession: (session) => set({ movieSession: session }),
-  
-  // Movie data
-  movies: [],
-  setMovies: (movies) => set({ movies }),
-  
-  // Current movie
-  currentMovieIndex: 0,
-  setCurrentMovieIndex: (index) => set({ currentMovieIndex: index }),
-  get currentMovie() {
-    const { movies, currentMovieIndex } = get();
-    return movies.length > currentMovieIndex ? movies[currentMovieIndex] : null;
-  },
-  
-  // Reset state
-  resetState: () => set({
+export const useAppStore = create<AppState>((set, get) => {
+  const persistedUser = JSON.parse(localStorage.getItem('jellyfinUser') || 'null');
+  return {
+    // Auth state
+    user: persistedUser,
+    isAuthenticated: !!persistedUser,
+    setUser: (user) => {
+      if (user) {
+        localStorage.setItem('jellyfinUser', JSON.stringify(user));
+      } else {
+        localStorage.removeItem('jellyfinUser');
+      }
+      set({ user, isAuthenticated: !!user });
+    },
+    
+    // Jellyfin server settings
+    serverUrl: localStorage.getItem('jellyfinServerUrl') || '',
+    setServerUrl: (url) => {
+      localStorage.setItem('jellyfinServerUrl', url);
+      set({ serverUrl: url });
+    },
+    
+    // Lobby state
     currentLobby: null,
+    setCurrentLobby: (lobby) => set({ currentLobby: lobby }),
+    
+    // Movie session state
     movieSession: null,
+    setMovieSession: (session) => set({ movieSession: session }),
+    
+    // Movie data
     movies: [],
-    currentMovieIndex: 0
-  })
-}));
+    setMovies: (movies) => set({ movies }),
+    
+    // Current movie
+    currentMovieIndex: 0,
+    setCurrentMovieIndex: (index) => set({ currentMovieIndex: index }),
+    get currentMovie() {
+      const { movies, currentMovieIndex } = get();
+      return movies.length > currentMovieIndex ? movies[currentMovieIndex] : null;
+    },
+    
+    // Reset state
+    resetState: () => set({
+      currentLobby: null,
+      movieSession: null,
+      movies: [],
+      currentMovieIndex: 0
+    })
+  };
+});

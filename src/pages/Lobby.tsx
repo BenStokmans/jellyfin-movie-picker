@@ -12,7 +12,7 @@ import { User } from '@/types';
 export default function Lobby() {
   const navigate = useNavigate();
   const { inviteCode } = useParams<{ inviteCode?: string }>();
-  const { user, currentLobby, setCurrentLobby, setMovies } = useAppStore();
+  const { user, currentLobby, setCurrentLobby, setMovies, setUser, serverUrl } = useAppStore();
   
   const [lobbyName, setLobbyName] = useState('');
   const [joinCode, setJoinCode] = useState(inviteCode || '');
@@ -20,40 +20,49 @@ export default function Lobby() {
   const [loadingMovies, setLoadingMovies] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [guestName, setGuestName] = useState(user?.name || '');
 
-  // Join with invite code from URL parameter
+  // Set invite code from URL parameter
   useEffect(() => {
-    if (inviteCode && user) {
-      handleJoinLobby();
+    if (inviteCode) {
+      setJoinCode(inviteCode);
+      // Create anonymous guest if no user
+      if (!user) {
+        const guestId = Math.random().toString(36).substr(2, 9);
+        setUser({ id: guestId, name: 'Guest', jellyfinUserId: '', jellyfinAccessToken: '' });
+      }
+      // DO NOT auto-join, let user enter their name first
     }
-  }, [inviteCode, user]);
+  }, [inviteCode, setUser, user]);
+  
+  // Don't auto-join, show name prompt instead
 
-  // Set up lobby update listener
+  // When user state changes (e.g. guest created), initialize guestName
+  useEffect(() => {
+    if (user && !user.jellyfinUserId) {
+      setGuestName(user.name);
+    }
+  }, [user]);
+
+  // lobby updates: navigate on picking/completed
   useEffect(() => {
     if (!currentLobby) return;
-
-    const unsubscribe = socketService.onLobbyChange((updatedLobby) => {
-      setCurrentLobby(updatedLobby);
-      
-      // If lobby status changed to 'picking', navigate to picker page
-      if (updatedLobby.status === 'picking') {
-        navigate('/picker');
-      }
-      
-      // If lobby status changed to 'completed', navigate to result page
-      if (updatedLobby.status === 'completed') {
-        navigate('/result');
-      }
+    const unsub = socketService.onLobbyChange((updated) => {
+      setCurrentLobby(updated);
+      if (updated.status === 'picking') navigate('/picker');
+      if (updated.status === 'completed') navigate('/result');
     });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [currentLobby, setCurrentLobby, navigate]);
+    return unsub;
+  }, [currentLobby, navigate, setCurrentLobby]);
 
   const handleCreateLobby = async () => {
     if (!user) return;
-    
+
+    // if guest, update name
+    if (!user.jellyfinUserId) {
+      setUser({ ...user, name: guestName });
+    }
+
     setError('');
     setLoading(true);
     
@@ -69,23 +78,31 @@ export default function Lobby() {
   };
 
   const handleJoinLobby = async () => {
-    if (!user) return;
-    if (!joinCode) {
-      setError('Please enter an invite code');
-      return;
+    if (!joinCode) { 
+      setError('Please enter an invite code'); 
+      return; 
     }
-    
-    setError('');
+
+    if (user && !user.jellyfinUserId) {
+      setUser({ ...user, name: guestName });
+    }
+
+    setError(''); 
     setLoading(true);
-    
     try {
-      const lobby = await socketService.joinLobbyWithCode(user, joinCode);
+      // ensure guest user
+      const current = useAppStore.getState().user;
+      if (!current) {
+        const guestId = Math.random().toString(36).substr(2, 9);
+        useAppStore.getState().setUser({ id: guestId, name: 'Guest', jellyfinUserId: '', jellyfinAccessToken: '' });
+      }
+      const lobby = await socketService.joinLobbyWithCode(useAppStore.getState().user!, joinCode);
       setCurrentLobby(lobby);
-    } catch (error) {
-      console.error('Join lobby error:', error);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (err) {
       setError('Failed to join lobby. Please check the invite code.');
-    } finally {
-      setLoading(false);
+    } finally { 
+      setLoading(false); 
     }
   };
 
@@ -100,13 +117,32 @@ export default function Lobby() {
     }
   };
 
-  const copyInviteLink = () => {
+  const copyInviteLink = async () => {
     if (!currentLobby) return;
-    
     const url = `${window.location.origin}/lobby/${currentLobby.inviteCode}`;
-    navigator.clipboard.writeText(url);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch (err) {
+        console.error('Clipboard write error:', err);
+      }
+    } else {
+      // Fallback for insecure contexts or older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try {
+        document.execCommand('copy');
+      } catch (err) {
+        console.error('Fallback copy error:', err);
+      }
+      document.body.removeChild(textarea);
+    }
     setCopied(true);
-    
     setTimeout(() => {
       setCopied(false);
     }, 2000);
@@ -118,6 +154,8 @@ export default function Lobby() {
     setLoadingMovies(true);
     
     try {
+      // Reconnect to Jellyfin using persisted server URL
+      await jellyfinService.connect(serverUrl);
       // Fetch movies from Jellyfin
       const movies = await jellyfinService.getMovies(
         user.jellyfinUserId, 
@@ -140,25 +178,9 @@ export default function Lobby() {
 
   const isCreator = currentLobby && user ? currentLobby.creatorId === user.id : false;
 
-  // Loading state while we handle the invite code from URL
-  if (inviteCode && !currentLobby && !error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen p-4 bg-background">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl text-center">Joining Lobby...</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center">
-            Please wait while we connect you to the lobby.
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex items-center justify-center min-h-screen p-4 bg-background">
-      <Card className="w-full max-w-md">
+    <div className="flex items-center justify-center min-h-screen bg-background p-4">
+      <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle className="text-2xl text-center">
             {currentLobby ? currentLobby.name : 'Movie Picker Lobby'}
@@ -176,13 +198,13 @@ export default function Lobby() {
               <div className="p-3 bg-muted rounded-lg">
                 <div className="font-medium mb-1">Invite Code:</div>
                 <div className="flex items-center gap-2">
-                  <div className="font-mono text-xl bg-background p-2 rounded flex-1 text-center">
+                  <div className="font-mono text-xl bg-background p-3 rounded flex-1 text-center tracking-wider select-all shadow-inner">
                     {currentLobby.inviteCode}
                   </div>
                   <Button
                     variant="outline"
                     onClick={copyInviteLink}
-                    className="flex-shrink-0"
+                    className="flex-shrink-0 hover:bg-primary/10"
                   >
                     {copied ? 'Copied!' : 'Copy Link'}
                   </Button>
@@ -195,11 +217,11 @@ export default function Lobby() {
                   {currentLobby.participants.map((participant: User) => (
                     <div 
                       key={participant.id} 
-                      className="flex items-center justify-between p-2 bg-muted rounded"
+                      className="flex items-center justify-between p-2 px-3 bg-muted rounded shadow-sm"
                     >
                       <span>{participant.name}</span>
                       {participant.id === currentLobby.creatorId && (
-                        <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded">Host</span>
+                        <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded font-medium">Host</span>
                       )}
                     </div>
                   ))}
@@ -209,7 +231,7 @@ export default function Lobby() {
               {isCreator && (
                 <Button 
                   onClick={handleStartSession} 
-                  className="w-full mt-4"
+                  className="w-full mt-6 py-6 text-lg font-medium transition-all hover:scale-[1.02] hover:shadow-md"
                   disabled={currentLobby.participants.length < 1 || loadingMovies}
                 >
                   {loadingMovies ? 'Loading Movies...' : 'Start Movie Picking'}
@@ -219,40 +241,58 @@ export default function Lobby() {
               <Button 
                 variant="outline" 
                 onClick={handleLeaveLobby} 
-                className="w-full mt-2"
+                className="w-full mt-3 hover:bg-red-50 hover:text-red-600 hover:border-red-300 dark:hover:bg-red-950 dark:hover:text-red-400 transition-colors"
               >
                 Leave Lobby
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 text-center">
+              {/* Guest name input for anonymous users */}
+              {(!user || !user.jellyfinUserId) && (
+                <div className="space-y-2">
+                  <h3 className="font-medium text-center">Your Name</h3>
+                  <Input
+                    placeholder="Enter your name"
+                    value={guestName}
+                    onChange={e => setGuestName(e.target.value)}
+                    className="text-center"
+                  />
+                </div>
+              )}
+
+              {user && user.jellyfinUserId && (
+                <>
+                  <div className="space-y-2">
+                    <h3 className="font-medium text-center">Create a New Lobby</h3>
+                    <Input
+                      placeholder="Lobby Name (optional)"
+                      value={lobbyName}
+                      onChange={(e) => setLobbyName(e.target.value)}
+                      className="text-center"
+                    />
+                    <Button
+                      onClick={handleCreateLobby}
+                      className="w-full"
+                      disabled={loading}
+                    >
+                      Create Lobby
+                    </Button>
+                  </div>
+                  <div className="relative flex items-center justify-center my-4">
+                    <div className="absolute border-t border-border w-full" />
+                    <span className="relative px-2 bg-card text-muted-foreground text-sm">or</span>
+                  </div>
+                </>
+              )}
+
               <div className="space-y-2">
-                <h3 className="font-medium">Create a New Lobby</h3>
-                <Input
-                  placeholder="Lobby Name (optional)"
-                  value={lobbyName}
-                  onChange={(e) => setLobbyName(e.target.value)}
-                />
-                <Button 
-                  onClick={handleCreateLobby} 
-                  className="w-full"
-                  disabled={loading}
-                >
-                  Create Lobby
-                </Button>
-              </div>
-              
-              <div className="relative flex items-center justify-center my-4">
-                <div className="absolute border-t border-border w-full"></div>
-                <span className="relative px-2 bg-card text-muted-foreground text-sm">or</span>
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="font-medium">Join an Existing Lobby</h3>
+                <h3 className="font-medium text-center">Join an Existing Lobby</h3>
                 <Input
                   placeholder="Enter Invite Code"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  className="text-center"
                 />
                 <Button 
                   variant="outline" 
@@ -265,7 +305,7 @@ export default function Lobby() {
               </div>
               
               {error && (
-                <div className="text-sm text-red-500 mt-2">{error}</div>
+                <div className="text-sm text-red-500 mt-2 text-center">{error}</div>
               )}
             </div>
           )}

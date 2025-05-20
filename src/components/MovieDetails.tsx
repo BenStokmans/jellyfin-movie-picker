@@ -18,7 +18,7 @@ export function MovieDetails({ movie, showFullDetails = false }: MovieDetailsPro
   return (
     <div className="w-full">
       <div className="flex flex-col sm:flex-row gap-4">
-        <div className="w-full sm:w-1/3 aspect-[2/3] bg-muted rounded-md overflow-hidden">
+        <div className="w-full sm:w-1/3 aspect-[2/3] bg-muted rounded-md overflow-hidden shadow-lg">
           {movie.posterUrl ? (
             <img 
               src={movie.posterUrl} 
@@ -33,7 +33,7 @@ export function MovieDetails({ movie, showFullDetails = false }: MovieDetailsPro
         </div>
         
         <div className="w-full sm:w-2/3">
-          <h2 className="text-2xl font-bold mb-1">
+          <h2 className="text-2xl font-bold mb-2 leading-tight">
             {movie.name} {movie.year ? `(${movie.year})` : ''}
           </h2>
           
@@ -44,11 +44,11 @@ export function MovieDetails({ movie, showFullDetails = false }: MovieDetailsPro
           </div>
           
           {movie.genres && movie.genres.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-3">
+            <div className="flex flex-wrap gap-1 mb-3 justify-center">
               {movie.genres.map((genre) => (
                 <span 
                   key={genre} 
-                  className="inline-block px-2 py-0.5 bg-secondary text-secondary-foreground text-xs rounded"
+                  className="inline-block px-2 py-0.5 bg-secondary text-secondary-foreground text-xs font-medium rounded shadow-sm"
                 >
                   {genre}
                 </span>
@@ -57,9 +57,11 @@ export function MovieDetails({ movie, showFullDetails = false }: MovieDetailsPro
           )}
           
           {showFullDetails && (
-            <p className="text-sm mt-3 line-clamp-6">
-              {movie.overview || 'No description available.'}
-            </p>
+            <div className="mb-4">
+              <p className={`${showFullDetails ? '' : 'line-clamp-3'} text-sm leading-relaxed`}>
+                {movie.overview || 'No description available for this movie.'}
+              </p>
+            </div>
           )}
         </div>
       </div>
