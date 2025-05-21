@@ -30,7 +30,7 @@ A Tinder-style movie picker application for Jellyfin users to decide on a movie 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/jellyfin-movie-picker.git
+   git clone https://github.com/BenStokmans/jellyfin-movie-picker.git
    cd jellyfin-movie-picker
    ```
 
@@ -90,7 +90,7 @@ This application is designed to be self-hosted, with no dependency on external p
    docker compose build
    docker compose up -d
    ```
-   
+
 ### Customizing the Port
 
 By default, the application runs on port 3000. You can change this by setting the `PORT` environment variable:
