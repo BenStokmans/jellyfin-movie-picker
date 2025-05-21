@@ -1,4 +1,6 @@
+# DISCLAIMER: This entire project was created using Github Copilot Agent mode with Claude 3.7 Sonnet
 # Jellyfin Movie Picker
+
 
 A Tinder-style movie picker application for Jellyfin users to decide on a movie to watch together.
 
@@ -14,14 +16,14 @@ A Tinder-style movie picker application for Jellyfin users to decide on a movie 
 ## Technology Stack
 
 - **Frontend**: React, TypeScript, Vite, TailwindCSS
-- **Backend**: Node.js, Express, Socket.IO
+- **Backend**: Bun, Express, Socket.IO
 - **APIs**: Jellyfin SDK
 
 ## Setup Instructions
 
 ### Prerequisites
 
-- Node.js (v16 or higher)
+- Bun (v1.0 or higher)
 - A running Jellyfin server with movies
 
 ### Installation
@@ -35,53 +37,36 @@ A Tinder-style movie picker application for Jellyfin users to decide on a movie 
 2. Install dependencies for both the client and server:
    ```bash
    # Install client dependencies
-   npm install
+   bun install
    
    # Install server dependencies
    cd server
-   npm install
+   bun install
    cd ..
-   ```
-
-3. Create a `.env` file in the server directory (optional):
-   ```bash
-   # Navigate to server directory
-   cd server
-   
-   # Copy example environment file
-   cp ../.env.example .env
-   
-   # Edit as needed
-   nano .env
    ```
 
 ### Running the Application
 
 1. Start the development server (which also serves the client):
    ```bash
-   # Use the starter script (recommended)
-   npm start
-   
-   # Or run the server directly
-   cd server
-   npm run dev
+   bun run dev
    ```
 
 2. Open your browser and navigate to:
    ```
-   http://localhost:3000
+   http://localhost:3001
    ```
 
 ### Building for Production
 
 1. Build both client and server:
    ```bash
-   npm run build
+   bun run build
    ```
 
 2. Start the production server:
    ```bash
-   npm run start
+   bun run start
    ```
 
 ## How to Use
@@ -100,83 +85,23 @@ This application is designed to be self-hosted, with no dependency on external p
 ### Deployment Options
 
 #### Docker (Recommended)
-
-1. Create a `Dockerfile` in the root directory:
-   ```bash
-   # Create Dockerfile
-   cat > Dockerfile << 'EOF'
-   FROM node:18-slim
-
-   WORKDIR /app
-
-   # Copy package files
-   COPY package*.json ./
-   COPY server/package*.json ./server/
-
-   # Install dependencies
-   RUN npm install
-   RUN cd server && npm install
-
-   # Copy source files
-   COPY . .
-
-   # Build the client and server
-   RUN npm run build
-
-   # Set environment variables
-   ENV NODE_ENV=production
-   ENV PORT=3000
-
-   # Expose the port
-   EXPOSE 3000
-
-   # Start the server
-   CMD ["npm", "run", "start"]
-   EOF
-   ```
-
 2. Build and run the Docker container:
    ```bash
-   docker build -t jellyfin-movie-picker .
-   docker run -p 3000:3000 jellyfin-movie-picker
+   docker compose build
+   docker compose up -d
    ```
-
-#### Manual Deployment
-
-1. Build the application:
-   ```bash
-   npm run build
-   ```
-
-2. Copy the build files to your server:
-   ```bash
-   # Example using rsync
-   rsync -av --exclude="node_modules" ./ user@your-server:/path/to/app/
-   ```
-
-3. Install production dependencies on your server:
-   ```bash
-   npm ci --production
-   cd server
-   npm ci --production
-   ```
-
-4. Start the server:
-   ```bash
-   npm run start
-   ```
-
+   
 ### Customizing the Port
 
 By default, the application runs on port 3000. You can change this by setting the `PORT` environment variable:
 
 ```bash
 # Set port to 8080
-PORT=8080 npm run start
+PORT=8080 bun run start
 
 # Or persist it
 export PORT=8080
-npm run start
+bun run start
 ```
 
 When using Docker, you can set the port using the `-p` flag and the environment variable:

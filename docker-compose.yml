@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   jellyfin-movie-picker:
     build:
@@ -10,4 +8,5 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - BUN_RUNTIME=1
     restart: unless-stopped

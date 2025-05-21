@@ -67,15 +67,6 @@ const io = new Server(server, {
   },
 });
 
-// Add API routes
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    memoryUsage: process.memoryUsage(),
-  });
-});
 
 // Add version API endpoint
 app.get("/api/version", (req, res) => {

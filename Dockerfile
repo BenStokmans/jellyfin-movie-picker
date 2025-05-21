@@ -1,20 +1,20 @@
-FROM node:18-slim
+FROM oven/bun:1
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
-COPY server/package*.json ./server/
+COPY package.json bun.lock* ./
+COPY server/package.json ./server/
 
 # Install dependencies
-RUN npm install
-RUN cd server && npm install
+RUN bun install
+RUN cd server && bun install
 
 # Copy source files
 COPY . .
 
 # Build the client and server
-RUN npm run build
+RUN bun run build
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -24,4 +24,4 @@ ENV PORT=3000
 EXPOSE 3000
 
 # Start the server
-CMD ["npm", "run", "start"]
+CMD ["bun", "run", "start"]
