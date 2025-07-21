@@ -53,7 +53,12 @@ const userRooms: Record<string, string> = {}; // userId -> lobbyId
 
 // Create Express app
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === "production" 
+    ? [process.env.ALLOWED_ORIGINS?.split(',') || "*"].flat()
+    : "*",
+  credentials: true,
+}));
 app.use(express.json());
 
 // Create HTTP server from Express app
@@ -62,8 +67,11 @@ const server = http.createServer(app);
 // Initialize Socket.IO server
 const io = new Server(server, {
   cors: {
-    origin: "*", // In production, replace with your actual domain
+    origin: process.env.NODE_ENV === "production" 
+      ? [process.env.ALLOWED_ORIGINS?.split(',') || "*"].flat()
+      : "*", // In production, replace with your actual domain
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 
@@ -83,8 +91,11 @@ app.use("/api/jellyfin-proxy", async (req, res) => {
   console.log(`[Jellyfin Proxy ${requestId}] Incoming request: ${req.method} ${req.url}`);
   
   try {
-    // Extract Jellyfin server URL from header or query
-    let jellyfinUrl = req.headers["x-jellyfin-url"] as string;
+    // Extract Jellyfin server URL from header or query (case-insensitive)
+    let jellyfinUrl = req.headers["x-jellyfin-url"] as string || 
+                      req.headers["X-Jellyfin-Url"] as string ||
+                      req.headers["X-JELLYFIN-URL"] as string;
+    
     if (!jellyfinUrl && req.query.jellyfinUrl) {
       jellyfinUrl = req.query.jellyfinUrl as string;
     }
@@ -105,16 +116,37 @@ app.use("/api/jellyfin-proxy", async (req, res) => {
 
     console.log(`[Jellyfin Proxy ${requestId}] Target URL: ${targetUrl}`);
 
-    // Copy original headers but remove proxy-specific ones
+    // Copy original headers but remove proxy-specific ones and Cloudflare headers
     const headers = { ...req.headers };
     delete headers.host;
     delete headers['x-jellyfin-url'];
+    delete headers['X-Jellyfin-Url'];
+    delete headers['X-JELLYFIN-URL'];
+    
+    // Remove Cloudflare headers that might interfere
+    delete headers['cf-connecting-ip'];
+    delete headers['cf-ipcountry'];
+    delete headers['cf-ray'];
+    delete headers['cf-visitor'];
+    delete headers['cf-warp-tag-id'];
+    delete headers['cdn-loop'];
+    
+    // Remove forwarded headers that might confuse the target server
+    delete headers['x-forwarded-for'];
+    delete headers['x-forwarded-host'];
+    delete headers['x-forwarded-port'];
+    delete headers['x-forwarded-proto'];
+    delete headers['x-forwarded-server'];
+    delete headers['x-real-ip'];
 
     console.log(`[Jellyfin Proxy ${requestId}] Request headers:`, Object.keys(headers));
     console.log(`[Jellyfin Proxy ${requestId}] Auth header present: ${!!headers.authorization}`);
+    console.log(`[Jellyfin Proxy ${requestId}] X-Emby-Authorization present: ${!!headers['x-emby-authorization']}`);
+    console.log(`[Jellyfin Proxy ${requestId}] X-Emby-Token present: ${!!headers['x-emby-token']}`);
 
     if (req.method !== 'GET' && req.body) {
       console.log(`[Jellyfin Proxy ${requestId}] Request body size: ${JSON.stringify(req.body).length} bytes`);
+      console.log(`[Jellyfin Proxy ${requestId}] Request body preview:`, JSON.stringify(req.body).substring(0, 200));
     }
 
     const startTime = Date.now();
@@ -124,6 +156,9 @@ app.use("/api/jellyfin-proxy", async (req, res) => {
       headers,
       data: req.method !== 'GET' ? req.body : undefined,
       responseType: 'arraybuffer',
+      timeout: 30000, // 30 second timeout
+      maxRedirects: 5,
+      validateStatus: (status) => status < 600, // Don't throw on 4xx/5xx, let proxy handle it
     });
 
     const duration = Date.now() - startTime;
