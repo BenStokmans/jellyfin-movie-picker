@@ -79,13 +79,20 @@ app.get("/api/version", (req, res) => {
 
 // Jellyfin API proxy to bypass CORS restrictions
 app.use("/api/jellyfin-proxy", async (req, res) => {
+  const requestId = Math.random().toString(36).substr(2, 9);
+  console.log(`[Jellyfin Proxy ${requestId}] Incoming request: ${req.method} ${req.url}`);
+  
   try {
     // Extract Jellyfin server URL from header or query
     let jellyfinUrl = req.headers["x-jellyfin-url"] as string;
     if (!jellyfinUrl && req.query.jellyfinUrl) {
       jellyfinUrl = req.query.jellyfinUrl as string;
     }
+    
+    console.log(`[Jellyfin Proxy ${requestId}] Jellyfin URL: ${jellyfinUrl || 'NOT PROVIDED'}`);
+    
     if (!jellyfinUrl) {
+      console.log(`[Jellyfin Proxy ${requestId}] Error: Missing Jellyfin server URL`);
       return res.status(400).json({ error: "Missing Jellyfin server URL" });
     }
 
@@ -96,11 +103,21 @@ app.use("/api/jellyfin-proxy", async (req, res) => {
     const finalPath = path + (params.toString() ? '?' + params.toString() : '');
     const targetUrl = `${jellyfinUrl}${finalPath}`;
 
+    console.log(`[Jellyfin Proxy ${requestId}] Target URL: ${targetUrl}`);
+
     // Copy original headers but remove proxy-specific ones
     const headers = { ...req.headers };
     delete headers.host;
     delete headers['x-jellyfin-url'];
 
+    console.log(`[Jellyfin Proxy ${requestId}] Request headers:`, Object.keys(headers));
+    console.log(`[Jellyfin Proxy ${requestId}] Auth header present: ${!!headers.authorization}`);
+
+    if (req.method !== 'GET' && req.body) {
+      console.log(`[Jellyfin Proxy ${requestId}] Request body size: ${JSON.stringify(req.body).length} bytes`);
+    }
+
+    const startTime = Date.now();
     const response = await axios({
       method: req.method,
       url: targetUrl,
@@ -109,25 +126,44 @@ app.use("/api/jellyfin-proxy", async (req, res) => {
       responseType: 'arraybuffer',
     });
 
+    const duration = Date.now() - startTime;
+    console.log(`[Jellyfin Proxy ${requestId}] Response received: ${response.status} (${duration}ms)`);
+    console.log(`[Jellyfin Proxy ${requestId}] Response headers:`, Object.keys(response.headers));
+    console.log(`[Jellyfin Proxy ${requestId}] Response size: ${response.data.byteLength} bytes`);
+
     // Forward the response back to the client
     Object.entries(response.headers).forEach(([key, value]) => {
       res.setHeader(key, value as string);
     });
 
     res.status(response.status).send(response.data);
+    console.log(`[Jellyfin Proxy ${requestId}] Request completed successfully`);
   } catch (error) {
     const err = error as AxiosError;
+    console.error(`[Jellyfin Proxy ${requestId}] Error occurred:`, err.message);
+    console.error(`[Jellyfin Proxy ${requestId}] Error code:`, err.code);
+    console.error(`[Jellyfin Proxy ${requestId}] Request config:`, {
+      method: err.config?.method,
+      url: err.config?.url,
+      timeout: err.config?.timeout,
+    });
+    
     // log content of response if available
     if (err.response) {
+      console.error(`[Jellyfin Proxy ${requestId}] Error status:`, err.response.status);
+      console.error(`[Jellyfin Proxy ${requestId}] Error headers:`, Object.keys(err.response.headers));
+      
       const responseBuffer = Buffer.from(err.response.data as ArrayBuffer);
       const responseString = responseBuffer.toString("utf-8");
-      console.error("Error response from Jellyfin:", responseString);
+      console.error(`[Jellyfin Proxy ${requestId}] Error response body:`, responseString);
     } else {
-      console.error("Error without response:", err.message);
+      console.error(`[Jellyfin Proxy ${requestId}] No response received from Jellyfin server`);
     }
+    
     res.status(err.response?.status || 500).json({
       error: "Failed to proxy request to Jellyfin",
       details: err.message,
+      requestId,
     });
   }
 });
