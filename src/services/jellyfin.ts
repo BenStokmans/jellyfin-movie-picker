@@ -62,11 +62,22 @@ class JellyfinService {
         }
       });
       
+      console.log('Connect response status:', response.status);
+      console.log('Connect response headers:', response.headers);
+      console.log('Connect response data type:', typeof response.data);
+      console.log('Connect response data:', response.data);
+      
       if (response.status !== 200) {
         throw new Error(`Unexpected status code: ${response.status}`);
       }
       
-      console.log('Connected to Jellyfin server:', response.data.ServerName);
+      // Check if response.data is actually an object with ServerName
+      if (response.data && typeof response.data === 'object' && 'ServerName' in response.data) {
+        console.log('Connected to Jellyfin server:', response.data.ServerName);
+      } else {
+        console.log('Connected to Jellyfin server (ServerName not found in response)');
+        console.log('Full response data:', JSON.stringify(response.data));
+      }
     } catch (error) {
       console.error('Failed to connect to Jellyfin server:', error);
       throw new Error('Failed to connect to Jellyfin server');

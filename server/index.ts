@@ -55,7 +55,7 @@ const userRooms: Record<string, string> = {}; // userId -> lobbyId
 const app = express();
 app.use(cors({
   origin: process.env.NODE_ENV === "production" 
-    ? [process.env.ALLOWED_ORIGINS?.split(',') || "*"].flat()
+    ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : "*")
     : "*",
   credentials: true,
 }));
@@ -68,7 +68,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === "production" 
-      ? [process.env.ALLOWED_ORIGINS?.split(',') || "*"].flat()
+      ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : "*")
       : "*", // In production, replace with your actual domain
     methods: ["GET", "POST"],
     credentials: true,
@@ -89,6 +89,8 @@ app.get("/api/version", (req, res) => {
 app.use("/api/jellyfin-proxy", async (req, res) => {
   const requestId = Math.random().toString(36).substr(2, 9);
   console.log(`[Jellyfin Proxy ${requestId}] Incoming request: ${req.method} ${req.url}`);
+  console.log(`[Jellyfin Proxy ${requestId}] Origin: ${req.headers.origin || 'NOT PROVIDED'}`);
+  console.log(`[Jellyfin Proxy ${requestId}] User-Agent: ${req.headers['user-agent'] || 'NOT PROVIDED'}`);
   
   try {
     // Extract Jellyfin server URL from header or query (case-insensitive)
@@ -171,7 +173,26 @@ app.use("/api/jellyfin-proxy", async (req, res) => {
       res.setHeader(key, value as string);
     });
 
-    res.status(response.status).send(response.data);
+    // Handle different content types properly
+    const contentType = response.headers['content-type'] || '';
+    console.log(`[Jellyfin Proxy ${requestId}] Content-Type: ${contentType}`);
+    
+    if (contentType.includes('application/json')) {
+      // For JSON responses, convert ArrayBuffer to JSON and send as JSON
+      try {
+        const jsonData = JSON.parse(Buffer.from(response.data).toString('utf-8'));
+        console.log(`[Jellyfin Proxy ${requestId}] JSON response preview:`, JSON.stringify(jsonData).substring(0, 200));
+        res.status(response.status).json(jsonData);
+      } catch (parseError) {
+        console.error(`[Jellyfin Proxy ${requestId}] JSON parse error:`, parseError);
+        const rawText = Buffer.from(response.data).toString('utf-8');
+        console.error(`[Jellyfin Proxy ${requestId}] Raw response text:`, rawText.substring(0, 500));
+        res.status(response.status).send(response.data);
+      }
+    } else {
+      // For other responses (images, etc.), send as buffer
+      res.status(response.status).send(response.data);
+    }
     console.log(`[Jellyfin Proxy ${requestId}] Request completed successfully`);
   } catch (error) {
     const err = error as AxiosError;
